@@ -10,21 +10,20 @@ class GameEngine:
         self.player = Player(name=player_name)
         self.opponent = Opponent(name="AI")
         self.field = GameField()
-        self.turn = 0
+        self.turn = 1
 
     def start_game(self) -> None:
         """Запускает игру, инициализируя поле."""
         from data.cards import get_initial_grid
         self.field.grid = get_initial_grid()
-        self.next_turn()
+        # Удаляем вызов next_turn(), чтобы игрок начинал первым
 
     def next_turn(self) -> None:
         """Переход к следующему ходу."""
         self.turn += 1
-        # Мана увеличивается до максимум 10
         self.player.mana = min(self.turn, 10)
         self.opponent.mana = min(self.turn, 10)
-        self.ai_turn()  # Ход AI перед боем
+        self.ai_turn()  # Ход AI после игрока
         self.resolve_combat()
 
     def play_card(self, row: int, col: int, slot: int, is_player: bool) -> Optional[Card]:
@@ -83,17 +82,29 @@ class GameEngine:
             player_creature = player_creatures[slot]
             opponent_creature = opponent_creatures[slot]
 
-            if player_creature and opponent_creature:
+            # Сохраняем начальные значения существ для проверки после боя
+            player_alive = player_creature and player_creature.health > 0
+            opponent_alive = opponent_creature and opponent_creature.health > 0
+
+            # Если оба существа живы, они атакуют друг друга
+            if player_alive and opponent_alive:
                 player_creature.health -= opponent_creature.attack
                 opponent_creature.health -= player_creature.attack
                 print(f"Бой в слоте {slot}: {player_creature} vs {opponent_creature}")
-            elif player_creature and not opponent_creature:
+
+            # Проверяем состояние после боя
+            player_alive_after = player_creature and player_creature.health > 0
+            opponent_alive_after = opponent_creature and opponent_creature.health > 0
+
+            # Урон по HP только если одно существо выжило или изначально не было противника
+            if player_alive_after and not opponent_alive:
                 self.opponent.take_damage(player_creature.attack)
                 print(f"{player_creature} атакует оппонента: HP {self.opponent.health}")
-            elif opponent_creature and not player_creature:
+            elif opponent_alive_after and not player_alive:
                 self.player.take_damage(opponent_creature.attack)
                 print(f"{opponent_creature} атакует игрока: HP {self.player.health}")
 
+            # Удаляем погибших существ
             if player_creature and player_creature.health <= 0:
                 player_creatures[slot] = None
                 print(f"{player_creature.name} погиб!")
