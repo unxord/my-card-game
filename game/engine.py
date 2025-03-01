@@ -1,3 +1,4 @@
+# game/engine.py
 from typing import Optional
 from game.core import Player, Opponent, Card, GameField
 import copy
@@ -20,8 +21,9 @@ class GameEngine:
     def next_turn(self) -> None:
         """Переход к следующему ходу."""
         self.turn += 1
-        self.player.mana += 1
-        self.opponent.mana += 1
+        # Мана увеличивается до максимум 10
+        self.player.mana = min(self.turn, 10)
+        self.opponent.mana = min(self.turn, 10)
         self.ai_turn()  # Ход AI перед боем
         self.resolve_combat()
 
@@ -51,20 +53,18 @@ class GameEngine:
 
     def ai_turn(self) -> None:
         """Ход AI: разыгрывает карту с учетом состояния поля."""
-        opponent_grid = self.field.grid[0]  # Зона AI (верхняя строка)
+        opponent_grid = self.field.grid[0]
         player_creatures = self.field.get_creatures(True)
         opponent_creatures = self.field.get_creatures(False)
 
-        # Приоритет: заполнить слот против сильного существа игрока или пустой слот
         for slot in range(8):
-            if opponent_creatures[slot] is None:  # Пустой слот
-                # Ищем карту с максимальной атакой, которую можем разыграть
+            if opponent_creatures[slot] is None:
                 best_card_idx = -1
                 best_attack = -1
                 for col, card in enumerate(opponent_grid):
                     if (self.opponent.can_play_card(card) and 
                         card.attack > best_attack and 
-                        (player_creatures[slot] or random.random() > 0.3)):  # Случайность для разнообразия
+                        (player_creatures[slot] or random.random() > 0.3)):
                         best_card_idx = col
                         best_attack = card.attack
                 
@@ -72,7 +72,6 @@ class GameEngine:
                     self.play_card(0, best_card_idx, slot, is_player=False)
                     return
 
-        # Если все слоты заняты, ничего не делаем
         print("AI пропускает ход: все слоты заняты или недостаточно маны.")
 
     def resolve_combat(self) -> None:
