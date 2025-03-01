@@ -1,18 +1,15 @@
 from typing import Optional
-from game.core import Player, Card, GameField
-import copy  # Добавляем для создания копий карт
+from game.core import Player, Opponent, Card, GameField
+import copy
+import random
 
 class GameEngine:
     """Класс для управления логикой игры."""
     def __init__(self, player_name: str) -> None:
-        """Инициализация игрового движка.
-
-        Аргументы:
-            player_name (str): Имя игрока.
-        """
         self.player = Player(name=player_name)
+        self.opponent = Opponent(name="AI")
         self.field = GameField()
-        self.turn = 0  # Счетчик ходов
+        self.turn = 0
 
     def start_game(self) -> None:
         """Запускает игру, инициализируя поле."""
@@ -23,34 +20,88 @@ class GameEngine:
     def next_turn(self) -> None:
         """Переход к следующему ходу."""
         self.turn += 1
-        self.player.mana += 1  # Увеличение маны на +1 каждый ход
-        print(f"Ход {self.turn}. Мана: {self.player.mana}, HP: {self.player.health}")
+        self.player.mana += 1
+        self.opponent.mana += 1
+        self.ai_turn()  # Ход AI перед боем
+        self.resolve_combat()
 
-    def play_card(self, row: int, col: int) -> Optional[Card]:
-        """Разыгрывает карту из сетки на поле.
-
-        Аргументы:
-            row (int): Номер строки в сетке (0-3).
-            col (int): Номер столбца в сетке (0-3).
-        Возвращает:
-            Optional[Card]: Карта, если успешно разыграна, иначе None.
-        """
-        if not (0 <= row < 4 and 0 <= col < 4):
+    def play_card(self, row: int, col: int, slot: int, is_player: bool) -> Optional[Card]:
+        """Разыгрывает карту из сетки в указанный слот."""
+        if not (0 <= row < 2 and 0 <= col < 8 and 0 <= slot < 8):
             print("Ошибка: Неверные координаты!")
             return None
 
         card = self.field.grid[row][col]
-        if card is None:  # На случай, если в будущем сетка будет содержать пустые ячейки
+        if card is None:
             print("Ошибка: Карта отсутствует!")
             return None
 
-        if self.player.can_play_card(card):
-            self.player.spend_mana(card)
-            # Создаем копию карты, чтобы оригинал остался в сетке
+        player = self.player if is_player else self.opponent
+        if player.can_play_card(card):
+            player.spend_mana(card)
             card_copy = copy.deepcopy(card)
-            self.field.place_creature(card_copy)
-            print(f"Разыграна карта: {card_copy}")
-            return card_copy
+            if self.field.place_creature(card_copy, slot, is_player):
+                print(f"{player.name} разыграл: {card_copy} в слот {slot}")
+                return card_copy
+            else:
+                print(f"Слот {slot} занят!")
         else:
-            print(f"Недостаточно маны для карты {card.name}!")
-            return None
+            print(f"{player.name}: Недостаточно маны для карты {card.name}!")
+        return None
+
+    def ai_turn(self) -> None:
+        """Ход AI: разыгрывает карту с учетом состояния поля."""
+        opponent_grid = self.field.grid[0]  # Зона AI (верхняя строка)
+        player_creatures = self.field.get_creatures(True)
+        opponent_creatures = self.field.get_creatures(False)
+
+        # Приоритет: заполнить слот против сильного существа игрока или пустой слот
+        for slot in range(8):
+            if opponent_creatures[slot] is None:  # Пустой слот
+                # Ищем карту с максимальной атакой, которую можем разыграть
+                best_card_idx = -1
+                best_attack = -1
+                for col, card in enumerate(opponent_grid):
+                    if (self.opponent.can_play_card(card) and 
+                        card.attack > best_attack and 
+                        (player_creatures[slot] or random.random() > 0.3)):  # Случайность для разнообразия
+                        best_card_idx = col
+                        best_attack = card.attack
+                
+                if best_card_idx != -1:
+                    self.play_card(0, best_card_idx, slot, is_player=False)
+                    return
+
+        # Если все слоты заняты, ничего не делаем
+        print("AI пропускает ход: все слоты заняты или недостаточно маны.")
+
+    def resolve_combat(self) -> None:
+        """Разрешает бои между существами и урон по HP."""
+        player_creatures = self.field.get_creatures(True)
+        opponent_creatures = self.field.get_creatures(False)
+
+        for slot in range(8):
+            player_creature = player_creatures[slot]
+            opponent_creature = opponent_creatures[slot]
+
+            if player_creature and opponent_creature:
+                player_creature.health -= opponent_creature.attack
+                opponent_creature.health -= player_creature.attack
+                print(f"Бой в слоте {slot}: {player_creature} vs {opponent_creature}")
+            elif player_creature and not opponent_creature:
+                self.opponent.take_damage(player_creature.attack)
+                print(f"{player_creature} атакует оппонента: HP {self.opponent.health}")
+            elif opponent_creature and not player_creature:
+                self.player.take_damage(opponent_creature.attack)
+                print(f"{opponent_creature} атакует игрока: HP {self.player.health}")
+
+            if player_creature and player_creature.health <= 0:
+                player_creatures[slot] = None
+                print(f"{player_creature.name} погиб!")
+            if opponent_creature and opponent_creature.health <= 0:
+                opponent_creatures[slot] = None
+                print(f"{opponent_creature.name} погиб!")
+
+    def is_game_over(self) -> bool:
+        """Проверяет, закончилась ли игра."""
+        return self.player.health <= 0 or self.opponent.health <= 0
