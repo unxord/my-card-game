@@ -10,8 +10,9 @@ pygame.init()
 WIDTH, HEIGHT = 800, 600
 CARD_WIDTH, CARD_HEIGHT = 80, 100
 SLOT_SIZE = 80
-FONT = pygame.font.SysFont("Arial", 16)  # Уменьшаем шрифт до 16
+FONT = pygame.font.SysFont("Arial", 16)
 WHITE, BLACK, GRAY, GREEN, RED = (255, 255, 255), (0, 0, 0), (150, 150, 150), (0, 255, 0), (255, 0, 0)
+YELLOW = (255, 255, 0)  # Добавляем желтый цвет для активных существ
 
 class GUI:
     """Класс для управления графическим интерфейсом."""
@@ -25,10 +26,15 @@ class GUI:
     def draw_card(self, card: Optional[Card], x: int, y: int, clickable: bool = False) -> pygame.Rect:
         """Рисует карту на экране."""
         rect = pygame.Rect(x, y, CARD_WIDTH, CARD_HEIGHT)
-        color = GREEN if clickable and card and self.engine.player.can_play_card(card) else GRAY
+        # Определяем цвет: желтый для активных, зеленый для кликабельных неактивных, серый для остальных
+        if card and card.active:
+            color = YELLOW
+        elif clickable and card and self.engine.player.can_play_card(card):
+            color = GREEN
+        else:
+            color = GRAY
         pygame.draw.rect(self.screen, color, rect)
         if card:
-            # Уменьшаем текст и размещаем компактнее
             name_text = FONT.render(f"{card.name}", True, BLACK)
             stats_text = FONT.render(f"M:{card.mana_cost} A:{card.attack} H:{card.health}", True, BLACK)
             self.screen.blit(name_text, (x + 5, y + 5))
@@ -45,33 +51,33 @@ class GUI:
         self.screen.blit(player_stats, (10, HEIGHT - 40))
         self.screen.blit(opp_stats, (10, 10))
 
-        # Сетка карт 8x2 (увеличиваем расстояние от поля оппонента)
+        # Оппонент: сетка карт
         self.grid_rects = []
         for row in range(2):
             row_rects = []
             for col in range(8):
                 card = self.engine.field.grid[row][col]
                 x = col * (CARD_WIDTH + 10) + 50
-                y = 180 if row == 0 else 300  # Увеличиваем отступ: оппонент 180, игрок 300
+                y = 50 if row == 0 else 420  # Оппонент: y=50, Игрок: y=420
                 clickable = (row == 1)
                 rect = self.draw_card(card, x, y, clickable)
                 row_rects.append(rect)
             self.grid_rects.append(row_rects)
 
-        # Поле оппонента (верхние слоты)
+        # Поле оппонента
         self.opp_slots = []
         for slot in range(8):
             card = self.engine.field.get_creatures(False)[slot]
             x = slot * (SLOT_SIZE + 10) + 50
-            rect = self.draw_card(card, x, 50)  # Поле оппонента на высоте 50
+            rect = self.draw_card(card, x, 170)
             self.opp_slots.append(rect)
 
-        # Поле игрока (нижние слоты)
+        # Поле игрока
         self.player_slots = []
         for slot in range(8):
             card = self.engine.field.get_creatures(True)[slot]
             x = slot * (SLOT_SIZE + 10) + 50
-            rect = self.draw_card(card, x, 420)  # Поле игрока ниже, на 420
+            rect = self.draw_card(card, x, 300)
             self.player_slots.append(rect)
 
         # Кнопка "Конец хода"
