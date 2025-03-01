@@ -10,21 +10,34 @@ class GameEngine:
         self.player = Player(name=player_name)
         self.opponent = Opponent(name="AI")
         self.field = GameField()
-        self.turn = 1
+        self.turn = 1  # Начинаем с 1 для правильной маны
+        self.opponent_turn = 0
 
     def start_game(self) -> None:
         """Запускает игру, инициализируя поле."""
         from data.cards import get_initial_grid
         self.field.grid = get_initial_grid()
-        # Удаляем вызов next_turn(), чтобы игрок начинал первым
+        self.player.mana = min(self.turn, 10)
+        self.opponent.mana = 0
 
     def next_turn(self) -> None:
-        """Переход к следующему ходу."""
+        """Ход игрока: действия, атака активных, активация для следующего хода, передача хода AI."""
+        # 1. Обновление маны игрока (активация перенесена в конец)
         self.turn += 1
         self.player.mana = min(self.turn, 10)
-        self.opponent.mana = min(self.turn, 10)
-        self.ai_turn()  # Ход AI после игрока
-        self.resolve_combat()
+
+        # 2. Игрок совершает действия через GUI (play_card)
+
+        # 3. Атака только уже активных существ игрока после завершения хода
+        self.resolve_combat(is_player_turn=True)
+
+        # 4. Активация существ игрока для следующего хода
+        for creature in self.field.get_creatures(True):
+            if creature:
+                creature.active = True
+
+        # 5. Передача хода AI
+        self.ai_turn()
 
     def play_card(self, row: int, col: int, slot: int, is_player: bool) -> Optional[Card]:
         """Разыгрывает карту из сетки в указанный слот."""
@@ -41,6 +54,7 @@ class GameEngine:
         if player.can_play_card(card):
             player.spend_mana(card)
             card_copy = copy.deepcopy(card)
+            card_copy.active = False  # Новое существо неактивно
             if self.field.place_creature(card_copy, slot, is_player):
                 print(f"{player.name} разыграл: {card_copy} в слот {slot}")
                 return card_copy
@@ -51,7 +65,12 @@ class GameEngine:
         return None
 
     def ai_turn(self) -> None:
-        """Ход AI: разыгрывает карту с учетом состояния поля."""
+        """Ход AI: действия, атака активных, активация для следующего хода."""
+        # 1. Обновление маны AI
+        self.opponent_turn += 1
+        self.opponent.mana = min(self.opponent_turn, 10)
+
+        # 2. AI совершает действия
         opponent_grid = self.field.grid[0]
         player_creatures = self.field.get_creatures(True)
         opponent_creatures = self.field.get_creatures(False)
@@ -69,48 +88,49 @@ class GameEngine:
                 
                 if best_card_idx != -1:
                     self.play_card(0, best_card_idx, slot, is_player=False)
-                    return
+                    break
 
-        print("AI пропускает ход: все слоты заняты или недостаточно маны.")
+        # 3. Атака только уже активных существ AI
+        self.resolve_combat(is_player_turn=False)
 
-    def resolve_combat(self) -> None:
+        # 4. Активация существ AI для следующего хода
+        for creature in self.field.get_creatures(False):
+            if creature:
+                creature.active = True
+
+    def resolve_combat(self, is_player_turn: bool) -> None:
         """Разрешает бои между существами и урон по HP."""
         player_creatures = self.field.get_creatures(True)
         opponent_creatures = self.field.get_creatures(False)
+        attacking_creatures = player_creatures if is_player_turn else opponent_creatures
+        defending_creatures = opponent_creatures if is_player_turn else player_creatures
+        defender = self.opponent if is_player_turn else self.player
 
         for slot in range(8):
-            player_creature = player_creatures[slot]
-            opponent_creature = opponent_creatures[slot]
+            attacker = attacking_creatures[slot]
+            defender_creature = defending_creatures[slot]
 
-            # Сохраняем начальные значения существ для проверки после боя
-            player_alive = player_creature and player_creature.health > 0
-            opponent_alive = opponent_creature and opponent_creature.health > 0
+            attacker_alive = attacker and attacker.health > 0
+            defender_alive = defender_creature and defender_creature.health > 0
 
-            # Если оба существа живы, они атакуют друг друга
-            if player_alive and opponent_alive:
-                player_creature.health -= opponent_creature.attack
-                opponent_creature.health -= player_creature.attack
-                print(f"Бой в слоте {slot}: {player_creature} vs {opponent_creature}")
+            # Атака только активных существ
+            if attacker_alive and attacker.active:
+                if defender_alive:
+                    defender_creature.health -= attacker.attack
+                    print(f"{attacker} атакует {defender_creature}")
+                    attacker.health -= defender_creature.attack
+                    print(f"{defender_creature} контратакует {attacker}")
+                else:
+                    defender.take_damage(attacker.attack)
+                    print(f"{attacker} атакует {defender.name}: HP {defender.health}")
 
-            # Проверяем состояние после боя
-            player_alive_after = player_creature and player_creature.health > 0
-            opponent_alive_after = opponent_creature and opponent_creature.health > 0
-
-            # Урон по HP только если одно существо выжило или изначально не было противника
-            if player_alive_after and not opponent_alive:
-                self.opponent.take_damage(player_creature.attack)
-                print(f"{player_creature} атакует оппонента: HP {self.opponent.health}")
-            elif opponent_alive_after and not player_alive:
-                self.player.take_damage(opponent_creature.attack)
-                print(f"{opponent_creature} атакует игрока: HP {self.player.health}")
-
-            # Удаляем погибших существ
-            if player_creature and player_creature.health <= 0:
-                player_creatures[slot] = None
-                print(f"{player_creature.name} погиб!")
-            if opponent_creature and opponent_creature.health <= 0:
-                opponent_creatures[slot] = None
-                print(f"{opponent_creature.name} погиб!")
+            # Удаляем погибших
+            if attacker and attacker.health <= 0:
+                attacking_creatures[slot] = None
+                print(f"{attacker.name} погиб!")
+            if defender_creature and defender_creature.health <= 0:
+                defending_creatures[slot] = None
+                print(f"{defender_creature.name} погиб!")
 
     def is_game_over(self) -> bool:
         """Проверяет, закончилась ли игра."""

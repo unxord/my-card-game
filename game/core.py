@@ -1,3 +1,4 @@
+# game/core.py
 from dataclasses import dataclass
 from typing import List, Optional, Dict
 
@@ -8,10 +9,11 @@ class Card:
     mana_cost: int      # Стоимость маны для использования
     attack: int         # Атака существа
     health: int         # Здоровье существа
+    active: bool = False  # Активно ли существо для атаки (по умолчанию нет)
 
     def __str__(self) -> str:
         """Строковое представление карты для вывода"""
-        return f"{self.name} (Мана: {self.mana_cost}, Атака: {self.attack}, HP: {self.health})"
+        return f"{self.name} (Мана: {self.mana_cost}, Атака: {self.attack}, HP: {self.health}, Активно: {self.active})"
 
 
 @dataclass
@@ -19,7 +21,7 @@ class Player:
     """Класс для представления игрока."""
     name: str           # Имя игрока
     health: int = 30    # Начальное здоровье
-    mana: int = 1       # Начальная мана
+    mana: int = 0       # Начальная мана
 
     def can_play_card(self, card: Card) -> bool:
         """Проверка, хватает ли маны для использования карты."""
@@ -41,30 +43,19 @@ class Opponent(Player):
     def choose_card(self, grid: List[List[Optional[Card]]]) -> tuple[int, int]:
         """Выбор карты AI из своей зоны сетки (верхняя строка 8x1)."""
         from random import choice
-        # AI выбирает случайную карту из верхней строки (индекс 0), если хватает маны
         available = [(0, col) for col in range(8) if grid[0][col] and self.can_play_card(grid[0][col])]
-        return choice(available) if available else (-1, -1)  # (-1, -1) если нет вариантов
+        return choice(available) if available else (-1, -1)
 
 
 class GameField:
     """Класс для представления игрового поля."""
     def __init__(self) -> None:
-        # Сетка 8x2 для карт (будет заполнена из data/cards.py)
         self.grid: List[List[Optional[Card]]] = [[None for _ in range(8)] for _ in range(2)]
-        # Поля существ для игрока и оппонента (по 8 слотов)
         self.player_creatures: List[Optional[Card]] = [None] * 8
         self.opponent_creatures: List[Optional[Card]] = [None] * 8
 
     def place_creature(self, card: Card, slot: int, is_player: bool) -> bool:
-        """Размещает существо в указанный слот.
-
-        Аргументы:
-            card (Card): Карта существа.
-            slot (int): Номер слота (0-7).
-            is_player (bool): True для игрока, False для оппонента.
-        Возвращает:
-            bool: Успешно ли размещено.
-        """
+        """Размещает существо в указанный слот."""
         target = self.player_creatures if is_player else self.opponent_creatures
         if 0 <= slot < 8 and target[slot] is None:
             target[slot] = card
